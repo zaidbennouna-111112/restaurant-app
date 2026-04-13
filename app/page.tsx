@@ -79,12 +79,19 @@ export default function MenuPage() {
 
   if (loading) return <p className="p-4 text-center">Loading menu...</p>
 
-  if (ordered) return (
+ if (ordered) return (
     <main className="p-4 max-w-2xl mx-auto text-center mt-20">
       <p className="text-5xl mb-4">🎉</p>
       <h2 className="text-2xl font-bold">Order Placed!</h2>
       <p className="text-gray-500 mt-2">Your order is being prepared. Sit back and relax!</p>
+      <button
+        onClick={() => setOrdered(false)}
+        className="mt-6 bg-black text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-800 transition"
+      >
+        ➕ Add More Items
+      </button>
     </main>
+  
   )
 
   return (

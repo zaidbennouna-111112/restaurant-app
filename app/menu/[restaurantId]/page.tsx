@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
+import { useParams } from 'next/navigation'
+import { supabase } from '../../../lib/supabaseClient'
 
 type MenuItem = {
   id: number
@@ -9,29 +10,23 @@ type MenuItem = {
   description: string
   price: number
   category: string
-  image_url: string
+  image_URL: string
   available: boolean
 }
 
 type CartItem = MenuItem & { quantity: number }
 
 export default function MenuPage() {
+  const { restaurantId } = useParams()
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [loading, setLoading] = useState(true)
   const [ordered, setOrdered] = useState(false)
+  const [restaurantName, setRestaurantName] = useState('')
+  const tableNumber = 1
 
   useEffect(() => {
-    async function fetchMenu() {
-      const { data, error } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('available', true)
-
-      if (!error) setMenuItems(data)
-      setLoading(false)
-    }
-
+    fetchRestaurant()
     fetchMenu()
 
     const channel = supabase
@@ -54,6 +49,27 @@ export default function MenuPage() {
       clearInterval(interval)
     }
   }, [])
+
+  async function fetchRestaurant() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('restaurant_name')
+      .eq('id', restaurantId)
+      .single()
+
+    if (data) setRestaurantName(data.restaurant_name)
+  }
+
+  async function fetchMenu() {
+    const { data } = await supabase
+      .from('menu_items')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .eq('available', true)
+
+    if (data) setMenuItems(data)
+    setLoading(false)
+  }
 
   function addToCart(item: MenuItem) {
     setCart((prev) => {
@@ -87,7 +103,8 @@ export default function MenuPage() {
         items: cart,
         total: total,
         status: 'pending',
-        table_number: 1,
+        table_number: tableNumber,
+        restaurant_id: restaurantId,
       },
     ])
 
@@ -99,7 +116,7 @@ export default function MenuPage() {
 
   if (loading) return <p className="p-4 text-center">Loading menu...</p>
 
- if (ordered) return (
+  if (ordered) return (
     <main className="p-4 max-w-2xl mx-auto text-center mt-20">
       <p className="text-5xl mb-4">🎉</p>
       <h2 className="text-2xl font-bold">Order Placed!</h2>
@@ -111,17 +128,19 @@ export default function MenuPage() {
         ➕ Add More Items
       </button>
     </main>
-  
   )
 
   return (
     <main className="p-4 max-w-2xl mx-auto pb-60">
-      <h1 className="text-3xl font-bold mb-2 text-center">🍽️ Our Menu</h1>
+      <h1 className="text-3xl font-bold mb-2 text-center">🍽️ {restaurantName || 'Our Menu'}</h1>
       <p className="text-center text-gray-400 mb-6">Scan • Order • Enjoy</p>
 
       <div className="grid gap-4">
         {menuItems.map((item) => (
           <div key={item.id} className="border rounded-xl p-4 shadow-sm hover:shadow-md transition">
+            {item.image_URL && (
+              <img src={item.image_URL} alt={item.name} className="w-full h-40 object-cover rounded-lg mb-3" />
+            )}
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold">{item.name}</h2>
               <span className="bg-green-100 text-green-700 font-bold px-3 py-1 rounded-full text-sm">

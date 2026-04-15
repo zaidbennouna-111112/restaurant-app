@@ -21,6 +21,8 @@ export default function AdminPage() {
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState<MenuItem | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [pin, setPin] = useState('')
+  const [savingPin, setSavingPin] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -32,34 +34,36 @@ export default function AdminPage() {
   })
 
   useEffect(() => {
-    async function checkAuth() {
+    async function init() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         router.push('/login')
+        return
+      }
+      fetchItems()
+
+      const channel = supabase
+        .channel('menu-items-channel')
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'menu_items'
+        }, () => {
+          fetchItems()
+        })
+        .subscribe()
+
+      const interval = setInterval(() => {
+        fetchItems()
+      }, 5000)
+
+      return () => {
+        supabase.removeChannel(channel)
+        clearInterval(interval)
       }
     }
-    checkAuth()
-    fetchItems()
 
-    const channel = supabase
-      .channel('menu-items-channel')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'menu_items'
-      }, () => {
-        fetchItems()
-      })
-      .subscribe()
-
-    const interval = setInterval(() => {
-      fetchItems()
-    }, 5000)
-
-    return () => {
-      supabase.removeChannel(channel)
-      clearInterval(interval)
-    }
+    init()
   }, [])
 
   async function handleLogout() {
@@ -67,7 +71,7 @@ export default function AdminPage() {
     router.push('/login')
   }
 
-async function fetchItems() {
+  async function fetchItems() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
 
@@ -124,7 +128,7 @@ async function fetchItems() {
       return
     }
 
-const { data: { session } } = await supabase.auth.getSession()
+    const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
 
     const payload = {
@@ -163,6 +167,24 @@ const { data: { session } } = await supabase.auth.getSession()
     fetchItems()
   }
 
+  async function savePin() {
+    if (pin.length !== 4 || isNaN(Number(pin))) {
+      alert('PIN must be exactly 4 digits!')
+      return
+    }
+    setSavingPin(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+
+    await supabase
+      .from('profiles')
+      .update({ kitchen_pin: pin })
+      .eq('id', session.user.id)
+
+    setSavingPin(false)
+    alert('PIN saved successfully!')
+  }
+
   if (loading) return <p className="p-4 text-center">Loading...</p>
 
   return (
@@ -177,6 +199,28 @@ const { data: { session } } = await supabase.auth.getSession()
         </button>
       </div>
       <p className="text-gray-400 mb-6">Manage your menu</p>
+
+      <div className="border rounded-xl p-4 mb-6 shadow-sm bg-gray-50">
+        <h2 className="font-bold text-lg mb-1">🔐 Kitchen PIN</h2>
+        <p className="text-gray-400 text-sm mb-3">Staff will use this PIN to access the kitchen dashboard</p>
+        <div className="flex gap-2">
+          <input
+            placeholder="Enter 4-digit PIN"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            maxLength={4}
+            type="number"
+            className="flex-1 border rounded-xl p-2"
+          />
+          <button
+            onClick={savePin}
+            disabled={savingPin}
+            className="bg-black text-white px-4 rounded-xl font-semibold hover:bg-gray-800 transition disabled:opacity-50"
+          >
+            {savingPin ? 'Saving...' : 'Save PIN'}
+          </button>
+        </div>
+      </div>
 
       <button
         onClick={openAddForm}

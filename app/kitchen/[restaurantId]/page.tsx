@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabaseClient'
+import { useParams } from 'next/navigation'
+import { supabase } from '../../../lib/supabaseClient'
 
 type Order = {
   id: number
@@ -13,13 +14,47 @@ type Order = {
 }
 
 export default function KitchenPage() {
+  const { restaurantId } = useParams()
   const [orders, setOrders] = useState<Order[]>([])
-  const [lastUpdated, setLastUpdated] = useState<string>('')
+  const [lastUpdated, setLastUpdated] = useState('')
+  const [authenticated, setAuthenticated] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [checking, setChecking] = useState(false)
+
+  async function checkPin() {
+    if (pinInput.length !== 4) {
+      setPinError('PIN must be 4 digits')
+      return
+    }
+
+    setChecking(true)
+    const { data } = await supabase
+      .from('profiles')
+      .select('kitchen_pin')
+      .eq('id', restaurantId)
+      .single()
+
+    if (data && data.kitchen_pin === pinInput) {
+      setAuthenticated(true)
+      setPinError('')
+      sessionStorage.setItem(`kitchen_auth_${restaurantId}`, 'true')
+    } else {
+      setPinError('Incorrect PIN, please try again')
+    }
+    setChecking(false)
+  }
+
+  useEffect(() => {
+    const alreadyAuth = sessionStorage.getItem(`kitchen_auth_${restaurantId}`)
+    if (alreadyAuth === 'true') setAuthenticated(true)
+  }, [])
 
   async function fetchOrders() {
     const { data } = await supabase
       .from('orders')
       .select('*')
+      .eq('restaurant_id', restaurantId)
       .neq('status', 'delivered')
       .order('created_at', { ascending: true })
 
@@ -30,9 +65,10 @@ export default function KitchenPage() {
   }
 
   useEffect(() => {
+    if (!authenticated) return
+
     fetchOrders()
 
-    // Realtime subscription
     const channel = supabase
       .channel('orders-channel')
       .on('postgres_changes', {
@@ -44,7 +80,6 @@ export default function KitchenPage() {
       })
       .subscribe()
 
-    // Auto refresh every 5 seconds as backup
     const interval = setInterval(() => {
       fetchOrders()
     }, 5000)
@@ -53,17 +88,52 @@ export default function KitchenPage() {
       supabase.removeChannel(channel)
       clearInterval(interval)
     }
-  }, [])
+  }, [authenticated])
 
   async function updateStatus(id: number, status: string) {
     await supabase.from('orders').update({ status }).eq('id', id)
-    fetchOrders() // immediately refresh after update
+    fetchOrders()
   }
 
   function getStatusColor(status: string) {
     if (status === 'pending') return 'bg-yellow-100 text-yellow-700'
     if (status === 'preparing') return 'bg-blue-100 text-blue-700'
     return 'bg-green-100 text-green-700'
+  }
+
+  if (!authenticated) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="bg-white rounded-2xl shadow-md p-8 w-full max-w-sm text-center">
+          <p className="text-4xl mb-4">👨‍🍳</p>
+          <h1 className="text-2xl font-bold mb-2">Kitchen Access</h1>
+          <p className="text-gray-400 mb-6 text-sm">Enter your 4-digit PIN to continue</p>
+
+          {pinError && (
+            <div className="bg-red-50 text-red-600 rounded-lg p-3 mb-4 text-sm">
+              {pinError}
+            </div>
+          )}
+
+          <input
+            type="number"
+            placeholder="Enter PIN"
+            value={pinInput}
+            onChange={(e) => setPinInput(e.target.value)}
+            maxLength={4}
+            className="w-full border rounded-xl p-3 mb-4 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-black"
+          />
+
+          <button
+            onClick={checkPin}
+            disabled={checking}
+            className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition disabled:opacity-50"
+          >
+            {checking ? 'Checking...' : 'Enter Kitchen'}
+          </button>
+        </div>
+      </main>
+    )
   }
 
   return (
